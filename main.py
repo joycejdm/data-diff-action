@@ -1,4 +1,4 @@
-# main.py (VERSÃO v4.0.0 - A "FORMA CORRETA" FINAL)
+# main.py (VERSÃO v4.0.2 - O FILTRO CORRETO)
 import os
 import requests
 import json
@@ -60,7 +60,7 @@ def create_profiles_yml(profiles_dir, sf_account, sf_user, sf_password, sf_role,
 
 # --- Função Principal ---
 def main():
-    print(f"🤖 Action da Joyce [v4.0.0] iniciada!")
+    print(f"🤖 Action da Joyce [v4.0.2] iniciada!") # <-- VERSÃO ATUALIZADA
 
     conn = None
     cursor = None
@@ -109,34 +109,45 @@ def main():
         run_command(["dbt", "build"], cwd_dir=dbt_dir_abs, profiles_dir=profiles_dir)
         print("✅ 'dbt build' concluído!")
 
-        # 5. [TASK 5] Lógica do "Diff" (MODO DE DIAGNÓSTICO FINAL v4.0.1)
-        print("A iniciar o 'diagnóstico final'...")
-
-        run_results_path = os.path.join(dbt_dir_abs, "target/run_results.json")
-
-        try:
-            with open(run_results_path) as f:
-                # Não vamos fazer 'json.load()'. Vamos ler como texto puro.
-                raw_results_content = f.read()
-        except Exception as e:
-            raise Exception(f"Não consegui LER o ficheiro 'run_results.json'. Erro: {e}")
-
+        # 5. [TASK 5] Lógica do "Diff" (A CORREÇÃO FINAL)
+        print("A iniciar o 'diff' (com filtro de unique_id)...")
         message_lines = [
-            "✅ **[DIAGNÓSTICO FINAL]** (v4.0.1)",
-            "O `dbt build` rodou. Aqui está o conteúdo *cru* do `target/run_results.json`:",
-            "",
-            "```json",
-            raw_results_content[:3000], # Limita aos primeiros 3000 caracteres
-            "```",
-            "",
-            "Agora podemos *ver* o que está lá dentro e corrigir o filtro."
+            f"✅ **[TASK 5 & 6]** SUCESSO! (v4.0.2)", # <-- VERSÃO ATUALIZADA
+            "O `dbt build` rodou e aqui está o 'diff' de contagem de linhas:", "",
+            "| Modelo Modificado | Contagem (Produção) | Contagem (PR) | Mudança |",
+            "| :--- | :--- | :--- | :--- |"
         ]
+        
+        run_results_path = os.path.join(dbt_dir_abs, "target/run_results.json")
+        with open(run_results_path) as f:
+            run_results = json.load(f)
 
+        # O FILTRO CORRETO (BASEADO NO DIAGNÓSTICO v4.0.1)
+        models_built = [r for r in run_results['results'] if r.get('unique_id', '').startswith('model.') and r.get('status') == 'success']
+        
+        if not models_built:
+            message_lines.append("| *Nenhum modelo foi construído com sucesso.* | | | |")
+        
+        for model in models_built:
+            model_name = model['unique_id'].split('.')[-1] 
+            print(f"A fazer o 'diff' do modelo: {model_name}...")
+            
+            cursor.execute(f"SELECT COUNT(*) FROM {sf_database}.{prod_schema}.{model_name}")
+            count_prod = cursor.fetchone()[0]
+            
+            cursor.execute(f"SELECT COUNT(*) FROM {sf_database}.{clone_schema}.{model_name}")
+            count_clone = cursor.fetchone()[0]
+            
+            mudanca = count_clone - count_prod
+            emoji = "➡️" if mudanca == 0 else ( "⬆️" if mudanca > 0 else "⬇️" )
+            
+            message_lines.append(f"| `{model_name}` | {count_prod:,} | {count_clone:,} | {mudanca:+,} {emoji} |")
+        
         message = "\n".join(message_lines)
 
     except Exception as e:
         print(f"ERRO: {e}", file=sys.stderr)
-        message = f"❌ **[TASK 5,6]** FALHA (v4.0.0)\n\n**Erro Recebido:**\n```{e}```"
+        message = f"❌ **[TASK 5,6]** FALHA (v4.0.2)\n\n**Erro Recebido:**\n```{e}```" # <-- VERSÃO ATUALIZADA
         post_comment(message)
         sys.exit(1)
 
