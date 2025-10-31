@@ -1,20 +1,14 @@
 # action.yml
 name: 'Joyce Data Diff Action'
-description: 'Roda um diff estatístico em PRs do dbt para evitar quebras de dados.'
+description: 'Roda um diff estatístico em PRs do dbt.'
 
-# Define as "entradas" que o usuário vai preencher no workflow
-# Por enquanto, vamos só criar um 'placeholder'
+# Inputs (como o usuário passa informações para nós)
 inputs:
-  github_token:
+  github-token:
     description: 'Token do GitHub para postar comentários.'
     required: true
 
-# Define como o Action roda
-# Por enquanto, ela não faz nada além de imprimir uma mensagem
+# Runs (como a Action é executada)
 runs:
-  using: 'composite'
-  steps:
-    - run: |
-        echo "Olá! Eu sou a Action da Joyce e fui acionada!"
-        echo "Em breve, eu vou checar seus dados"
-      shell: bash
+  using: 'docker'
+  image: 'Dockerfile' # Aponta para o Dockerfile que vamos criar
