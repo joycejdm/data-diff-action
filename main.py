@@ -112,15 +112,16 @@ def main():
         # MVP MAIS SIMPLES: Vamos só rodar 'dbt build' no projeto inteiro.
         # O clone já tem o estado da produção, o 'build' vai recriar
         # os modelos modificados (fct_vendas) e pular os não modificados.
-        run_command(["dbt", "build"], cwd_dir=dbt_dir_abs)
-        print("✅ 'dbt build' concluído!")
+        print("A executar 'dbt run'...")
+        run_command(["dbt", "run"], cwd_dir=dbt_dir_abs)
+        print("✅ 'dbt run' concluído!")
 
-        # 5. [TASK 5] Lógica do "Diff" (VERSÃO FINAL v2.3.0)
+        # 5. [TASK 5] Lógica do "Diff" (VERSÃO FINAL v2.3.1)
         print("A iniciar o 'diff' de contagem de linhas...")
 
         # Construir o cabeçalho da nossa mensagem de resposta
         message_lines = [
-            "✅ **[TASK 5 & 6]** SUCESSO! (v2.3.0)",
+            "✅ **[TASK 5 & 6]** SUCESSO! (v2.3.1)",
             "O `dbt build` rodou e aqui está o 'diff' de contagem de linhas:",
             "",
             "| Modelo Modificado | Contagem (Produção) | Contagem (PR) | Mudança |",
@@ -162,7 +163,7 @@ def main():
         message = "\n".join(message_lines)
 
         # O resto do 'except', 'finally' e 'post_comment' pode ficar igual
-        # Apenas certifique-se de que a mensagem de ERRO também diz 'v2.3.0'
+        # Apenas certifique-se de que a mensagem de ERRO também diz 'v2.3.1'
 
     except Exception as e:
         # 6. Reportar Erro (Igual)
