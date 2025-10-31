@@ -61,8 +61,7 @@ def run_connection_test():
             warehouse=sf_warehouse,
             database=sf_database,
             role=sf_role
-)
-
+        )
         # 4. Se conectar, rodar um teste
         cursor = conn.cursor()
         cursor.execute("SELECT 1")
