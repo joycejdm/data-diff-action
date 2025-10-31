@@ -75,8 +75,23 @@ def run_connection_test():
     except Exception as e:
         # 5. Se falhar, reportar o erro
         print(f"ERRO: {e}")
-        message = f"❌ **[TASK 2]** FALHA ao conectar no Snowflake.\n\n**Erro:**\n```{e}```"
 
+        # Tenta pegar os valores de novo, só para o log (pode falhar se o erro foi antes)
+        try:
+            acc = os.environ['INPUT_SF_ACCOUNT']
+            reg = os.environ['INPUT_SF_REGION']
+        except:
+            acc = "N/A"
+            reg = "N/A"
+
+        message = (
+            f"❌ **[TASK 2]** FALHA ao conectar no Snowflake.\n\n"
+            f"**Valores que eu tentei usar:**\n"
+            f"* `Account`: `{acc}`\n"
+            f"* `Region`: `{reg}`\n\n"
+            f"**Erro Recebido:**\n"
+            f"```{e}```"
+        )
     # 6. Postar o resultado no PR
     post_comment(token, comments_url, message)
 
