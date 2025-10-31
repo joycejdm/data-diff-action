@@ -1,5 +1,6 @@
-name: 'Joyce Data Diff - dbt Runner'
-description: '[TASK 3+4] Clona e roda dbt.'
+name: 'Joyce Data Diff (v3.0.0)'
+description: '[TASK 5+6] Roda dbt build e faz o diff usando dbt-artifacts.'
+# ...
 
 inputs:
   github_token:

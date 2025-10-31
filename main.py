@@ -1,12 +1,14 @@
-# main.py (VERSÃO v2.2.2 - Faz o Build e o Diff de Contagem)
+# main.py (VERSÃO v3.0.0 - A "Forma Correta")
 import os
 import requests
 import json
 import snowflake.connector
 import subprocess
 import sys
+# A NOSSA NOVA BIBLIOTECA (DA PESQUISA)
+from dbt_artifacts_parser.parser import parse_run_results
 
-# --- Função Helper para Postar Comentário (Igual a antes) ---
+# --- Função Helper para Postar Comentário (Igual) ---
 def post_comment(message_body):
     print(f"A postar comentário...")
     try:
@@ -23,7 +25,7 @@ def post_comment(message_body):
     except Exception as e:
         print(f"Falha crítica ao tentar postar comentário: {e}")
 
-# --- Função Helper para Rodar Comandos (Igual a antes) ---
+# --- Função Helper para Rodar Comandos (Igual) ---
 def run_command(command, cwd_dir):
     print(f"Executando: {' '.join(command)} (no diretório: {cwd_dir})")
     runner_home = os.environ.get('HOME', '/root')
@@ -36,7 +38,7 @@ def run_command(command, cwd_dir):
     print("--- Saída do Subprocess ---"); print(result.stdout)
     return result.stdout
 
-# --- Função Helper para Criar o profiles.yml (Igual a antes) ---
+# --- Função Helper para Criar o profiles.yml (Igual) ---
 def create_profiles_yml(sf_account, sf_user, sf_password, sf_role, sf_warehouse, sf_database, clone_schema):
     print("A criar profiles.yml temporário...")
     runner_home = os.environ.get('HOME', '/root')
@@ -61,10 +63,9 @@ def create_profiles_yml(sf_account, sf_user, sf_password, sf_role, sf_warehouse,
         f.write(profiles_yml_content)
     print("profiles.yml temporário criado com sucesso.")
 
-
-# --- Função Principal (AQUI ESTÃO AS MUDANÇAS) ---
+# --- Função Principal (COM A LÓGICA DE PARSING CORRETA) ---
 def main():
-    print(f"🤖 Action da Joyce [v2.2.2] iniciada!")
+    print(f"🤖 Action da Joyce [v3.0.0] iniciada!")
 
     conn = None
     cursor = None
@@ -87,62 +88,50 @@ def main():
         dbt_dir_abs = os.path.join("/github/workspace", dbt_dir_relative)
         clone_schema = f"PR_{pr_number}_CLONE"
 
-        # 2. [TASK 2] Conexão (Igual)
+        # 2. Conexão (Igual)
         print(f"A conectar ao Snowflake (Conta: {sf_account})...")
         conn = snowflake.connector.connect(
             user=sf_user, password=sf_password, account=sf_account,
             warehouse=sf_warehouse, database=sf_database, role=sf_role
         )
         cursor = conn.cursor()
-        print("✅ [TASK 2] Conexão com o Snowflake BEM SUCEDIDA!")
+        print("✅ Conexão com o Snowflake BEM SUCEDIDA!")
 
-        # 3. [TASK 3] Lógica de "Zero-Copy Clone" (Igual)
+        # 3. "Zero-Copy Clone" (Igual)
         print(f"A criar schema 'clone': {clone_schema} a partir de {prod_schema}...")
         cursor.execute(f"CREATE OR REPLACE TRANSIENT SCHEMA {clone_schema} CLONE {prod_schema};")
         print(f"Schema {clone_schema} criado com sucesso.")
 
-        # 4. [TASK 4] Rodar dbt (*** MUDANÇA AQUI ***)
+        # 4. Rodar dbt
         create_profiles_yml(sf_account, sf_user, sf_password, sf_role, sf_warehouse, sf_database, clone_schema)
         run_command(["dbt", "deps"], cwd_dir=dbt_dir_abs)
 
+        # Voltamos ao 'dbt build' (que sabemos que funciona, pelo v2.2.3)
         print("A executar 'dbt build'...")
-        # MUDANÇA: Trocamos 'parse' por 'build' para *executar* os modelos
-        # Estamos a usar '--select state:modified+' para construir SÓ o que mudou
-        # Para isso funcionar, precisamos de um 'defer' para o estado de produção
-        # MVP MAIS SIMPLES: Vamos só rodar 'dbt build' no projeto inteiro.
-        # O clone já tem o estado da produção, o 'build' vai recriar
-        # os modelos modificados (fct_vendas) e pular os não modificados.
-        print("A executar 'dbt run'...")
-        run_command(["dbt", "run"], cwd_dir=dbt_dir_abs)
-        print("✅ 'dbt run' concluído!")
+        run_command(["dbt", "build"], cwd_dir=dbt_dir_abs)
+        print("✅ 'dbt build' concluído!")
 
-        # 5. [TASK 5] Lógica do "Diff" (VERSÃO FINAL v2.3.1)
-        print("A iniciar o 'diff' de contagem de linhas...")
-
-        # Construir o cabeçalho da nossa mensagem de resposta
+        # 5. [TASK 5] Lógica do "Diff" (*** A FORMA CORRETA ***)
+        print("A iniciar o 'diff' (com dbt-artifacts-parser)...")
         message_lines = [
-            "✅ **[TASK 5 & 6]** SUCESSO! (v2.3.1)",
-            "O `dbt build` rodou e aqui está o 'diff' de contagem de linhas:",
-            "",
+            "✅ **[TASK 5 & 6]** SUCESSO! (v3.0.0)",
+            "O `dbt build` rodou e aqui está o 'diff' de contagem de linhas:", "",
             "| Modelo Modificado | Contagem (Produção) | Contagem (PR) | Mudança |",
             "| :--- | :--- | :--- | :--- |"
         ]
 
+        # A FORMA CORRETA DE LER O FICHEIRO (baseado na pesquisa)
         run_results_path = os.path.join(dbt_dir_abs, "target/run_results.json")
-        with open(run_results_path) as f:
-            run_results = json.load(f)
+        run_results = parse_run_results(run_results_path) # Usa a biblioteca!
 
-        # O FILTRO CORRETO (que agora sabemos que funciona)
-        models_built = [r for r in run_results['results'] if r.get('resource_type') == 'model' and r.get('status') == 'success']
+        # A FORMA CORRETA DE FILTRAR
+        models_built = [r for r in run_results.results if r.resource_type == 'model' and r.status == 'success']
 
         if not models_built:
             message_lines.append("| *Nenhum modelo foi construído com sucesso.* | | | |")
 
         for model in models_built:
-            # ID é 'model.dbt_cobaia_project.fct_vendas'
-            # Queremos 'fct_vendas'
-            model_name = model['unique_id'].split('.')[-1] 
-
+            model_name = model.unique_id.split('.')[-1] 
             print(f"A fazer o 'diff' do modelo: {model_name}...")
 
             # Query "Antes" (Produção)
@@ -153,22 +142,16 @@ def main():
             cursor.execute(f"SELECT COUNT(*) FROM {sf_database}.{clone_schema}.{model_name}")
             count_clone = cursor.fetchone()[0]
 
-            # Formatar a linha da tabela
             mudanca = count_clone - count_prod
             emoji = "➡️" if mudanca == 0 else ( "⬆️" if mudanca > 0 else "⬇️" )
 
-            # Formata os números com vírgulas (ex: 1,000,000)
             message_lines.append(f"| `{model_name}` | {count_prod:,} | {count_clone:,} | {mudanca:+,} {emoji} |")
 
         message = "\n".join(message_lines)
 
-        # O resto do 'except', 'finally' e 'post_comment' pode ficar igual
-        # Apenas certifique-se de que a mensagem de ERRO também diz 'v2.3.1'
-
     except Exception as e:
-        # 6. Reportar Erro (Igual)
         print(f"ERRO: {e}", file=sys.stderr)
-        message = f"❌ **[TASK 5,6]** FALHA (v2.2.2)\n\n**Erro Recebido:**\n```{e}```"
+        message = f"❌ **[TASK 5,6]** FALHA (v3.0.0)\n\n**Erro Recebido:**\n```{e}```"
         post_comment(message)
         sys.exit(1)
 
@@ -185,7 +168,7 @@ def main():
             print(f"Erro durante a limpeza: {e}")
             pass 
 
-    # 8. [TASK 6] Postar o resultado de SUCESSO no PR
+    # 8. Postar o resultado de SUCESSO no PR
     post_comment(message)
 
 if __name__ == "__main__":
