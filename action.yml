@@ -4,7 +4,7 @@ description: 'Roda um diff estatístico em PRs do dbt.'
 
 # Inputs (como o usuário passa informações para nós)
 inputs:
-  github-token:
+  github_token:
     description: 'Token do GitHub para postar comentários.'
     required: true
 
