@@ -54,11 +54,12 @@ def run_connection_test():
         conn = snowflake.connector.connect(
             user=sf_user,
             password=sf_password,
-            account=f"{sf_account}.{sf_region}", # Usamos o formato que descobrimos (ex: wemgvex-rf16823.sa-east-1)
+            account=sf_account, # <-- CORREÇÃO 1
+            region=sf_region,     # <-- CORREÇÃO 2
             warehouse=sf_warehouse,
             database=sf_database,
             role=sf_role
-        )
+    )
 
         # 4. Se conectar, rodar um teste
         cursor = conn.cursor()
