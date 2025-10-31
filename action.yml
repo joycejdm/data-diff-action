@@ -2,6 +2,10 @@ name: 'Joyce Data Diff - Teste de Conexão'
 description: '[TASK 2] Testa a conexão com o Snowflake.'
 
 inputs:
+  github_token:
+    description: 'Token do GitHub para postar comentários.'
+    required: true
+    
   sf_account:
     description: 'A conta Snowflake completa (ex: wemgvex-rf16823.sa-east-1.aws)'
     required: true

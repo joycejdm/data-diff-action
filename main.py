@@ -9,7 +9,7 @@ import sys
 def post_comment(message_body):
     print(f"A postar comentário: {message_body}")
     try:
-        token = os.environ['GITHUB_TOKEN']
+        token = os.environ['INPUT_GITHUB_TOKEN']
         event_path = os.environ['GITHUB_EVENT_PATH']
         with open(event_path) as f:
             event_data = json.load(f)
