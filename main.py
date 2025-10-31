@@ -1,4 +1,4 @@
-# main.py (VERSÃO v2.2.0 - Faz o Build e o Diff de Contagem)
+# main.py (VERSÃO v2.2.2 - Faz o Build e o Diff de Contagem)
 import os
 import requests
 import json
@@ -64,7 +64,7 @@ def create_profiles_yml(sf_account, sf_user, sf_password, sf_role, sf_warehouse,
 
 # --- Função Principal (AQUI ESTÃO AS MUDANÇAS) ---
 def main():
-    print(f"🤖 Action da Joyce [v2.2.0] iniciada!")
+    print(f"🤖 Action da Joyce [v2.2.2] iniciada!")
 
     conn = None
     cursor = None
@@ -119,7 +119,7 @@ def main():
         print("A iniciar o 'diff' de contagem de linhas...")
 
         # Construir o cabeçalho da nossa mensagem de resposta
-        message_lines = ["✅ **[TASK 5 & 6]** SUCESSO! (v2.2.0)",
+        message_lines = ["✅ **[TASK 5 & 6]** SUCESSO! (v2.2.2)",
                          "O `dbt build` rodou e aqui está o 'diff' de contagem de linhas:",
                          "",
                          "| Modelo Modificado | Contagem (Produção) | Contagem (PR) | Mudança |",
@@ -130,7 +130,7 @@ def main():
         with open(run_results_path) as f:
             run_results = json.load(f)
 
-        models_built = [r for r in run_results['results'] if r.get('resource_type') == 'model']
+        models_built = [r for r in run_results['results'] if r.get('resource_type') == 'model' and r.get('status') == 'success']
 
         for model in models_built:
             model_name = model['unique_id'].split('.')[-1] # Pega o nome (ex: 'fct_vendas')
@@ -154,7 +154,7 @@ def main():
     except Exception as e:
         # 6. Reportar Erro (Igual)
         print(f"ERRO: {e}", file=sys.stderr)
-        message = f"❌ **[TASK 5,6]** FALHA (v2.2.0)\n\n**Erro Recebido:**\n```{e}```"
+        message = f"❌ **[TASK 5,6]** FALHA (v2.2.2)\n\n**Erro Recebido:**\n```{e}```"
         post_comment(message)
         sys.exit(1)
 
