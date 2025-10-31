@@ -162,11 +162,15 @@ def main():
 
         print("A executar 'dbt build' (Modo SLIM CI)...")
         # ESTE É O COMANDO "FODA" DO SLIM CI
+
+        # Define o caminho correto para o 'state' (onde o manifest.json está)
+        state_path = os.path.join(prod_state_dir, "target")
+
         slim_ci_command = [
             "dbt", "build",
-            "--select", "state:modified+",  # Seleciona SÓ o que mudou
-            "--defer",                      # Usa os metadados da produção para modelos "pais"
-            "--state", prod_state_dir      # Aponta para a pasta com o manifest.json da produção
+            "--select", "state:modified+",
+            "--defer",
+            "--state", state_path      # <-- A CORREÇÃO
         ]
         run_command(slim_ci_command, cwd_dir=dbt_dir_abs, profiles_dir=profiles_dir)
         print("✅ 'dbt build' (Slim CI) concluído!")
