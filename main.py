@@ -115,41 +115,34 @@ def main():
         run_command(["dbt", "build"], cwd_dir=dbt_dir_abs)
         print("✅ 'dbt build' concluído!")
 
-        # 5. [TASK 5] Lógica do "Diff" (*** NOVO ***)
-        print("A iniciar o 'diff' de contagem de linhas...")
+        # 5. [TASK 5] Lógica do "Diff" (MODO DE DIAGNÓSTICO v2.2.3)
+        print("A iniciar o 'diff' (Modo de Diagnóstico)...")
 
-        # Construir o cabeçalho da nossa mensagem de resposta
-        message_lines = ["✅ **[TASK 5 & 6]** SUCESSO! (v2.2.2)",
-                         "O `dbt build` rodou e aqui está o 'diff' de contagem de linhas:",
-                         "",
-                         "| Modelo Modificado | Contagem (Produção) | Contagem (PR) | Mudança |",
-                         "| :--- | :--- | :--- | :--- |"]
-
-        # Ler o 'run_results.json' para saber o que o dbt acabou de construir
         run_results_path = os.path.join(dbt_dir_abs, "target/run_results.json")
         with open(run_results_path) as f:
             run_results = json.load(f)
 
-        models_built = [r for r in run_results['results'] if r.get('resource_type') == 'model' and r.get('status') == 'success']
+        # Vamos ver o que está dentro de 'results'
+        results_diagnostico = []
+        for r in run_results['results']:
+            status = r.get('status')
+            resource_type = r.get('resource_type')
+            unique_id = r.get('unique_id')
+            results_diagnostico.append(f"- Status: `{status}`, Tipo: `{resource_type}`, ID: `{unique_id}`")
 
-        for model in models_built:
-            model_name = model['unique_id'].split('.')[-1] # Pega o nome (ex: 'fct_vendas')
-
-            # Query "Antes" (Produção)
-            cursor.execute(f"SELECT COUNT(*) FROM {sf_database}.{prod_schema}.{model_name}")
-            count_prod = cursor.fetchone()[0]
-
-            # Query "Depois" (Clone)
-            cursor.execute(f"SELECT COUNT(*) FROM {sf_database}.{clone_schema}.{model_name}")
-            count_clone = cursor.fetchone()[0]
-
-            # Formatar a linha da tabela
-            mudanca = count_clone - count_prod
-            emoji = "➡️" if mudanca == 0 else ( "⬆️" if mudanca > 0 else "⬇️" )
-
-            message_lines.append(f"| `{model_name}` | {count_prod:,} | {count_clone:,} | {mudanca:+,} {emoji} |")
+        message_lines = [
+            "✅ **[DIAGNÓSTICO]** SUCESSO! (v2.2.3)",
+            "O `dbt build` rodou. Aqui está o que eu encontrei no `run_results.json`:",
+            "",
+            "\n".join(results_diagnostico),
+            "",
+            "Próximo passo: Usar isto para corrigir o filtro!"
+        ]
 
         message = "\n".join(message_lines)
+
+        # O resto do 'except', 'finally' e 'post_comment' pode ficar igual
+        # Apenas certifique-se de que a mensagem de ERRO também diz 'v2.2.3'
 
     except Exception as e:
         # 6. Reportar Erro (Igual)
