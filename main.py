@@ -48,18 +48,20 @@ def run_connection_test():
         sf_database = os.environ['INPUT_SF_DATABASE']
         sf_role = os.environ['INPUT_SF_ROLE']
 
-        print("Tentando conectar ao Snowflake...")
+        print(f"A tentar conectar com Account='{sf_account}' e Region='{sf_region}'...")
 
-        # 3. Tentar a conexão
         conn = snowflake.connector.connect(
             user=sf_user,
             password=sf_password,
-            account=sf_account, # <-- CORREÇÃO 1
-            region=sf_region,     # <-- CORREÇÃO 2
+
+            # A forma correta (como o dbt faz):
+            account=sf_account, 
+            region=sf_region,     
+
             warehouse=sf_warehouse,
             database=sf_database,
             role=sf_role
-    )
+)
 
         # 4. Se conectar, rodar um teste
         cursor = conn.cursor()
