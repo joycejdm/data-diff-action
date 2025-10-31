@@ -130,7 +130,7 @@ def main():
         with open(run_results_path) as f:
             run_results = json.load(f)
 
-        models_built = [r for r in run_results['results'] if r['resource_type'] == 'model']
+        models_built = [r for r in run_results['results'] if r.get('resource_type') == 'model']
 
         for model in models_built:
             model_name = model['unique_id'].split('.')[-1] # Pega o nome (ex: 'fct_vendas')
