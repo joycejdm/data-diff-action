@@ -109,39 +109,28 @@ def main():
         run_command(["dbt", "build"], cwd_dir=dbt_dir_abs, profiles_dir=profiles_dir)
         print("✅ 'dbt build' concluído!")
 
-        # 5. [TASK 5] Lógica do "Diff" (O PARSER MANUAL v2.3.1)
-        print("A iniciar o 'diff' (com parser manual)...")
-        message_lines = [
-            "✅ **[TASK 5 & 6]** SUCESSO! (v4.0.0 - FINALMENTE)",
-            "O `dbt build` rodou e aqui está o 'diff' de contagem de linhas:", "",
-            "| Modelo Modificado | Contagem (Produção) | Contagem (PR) | Mudança |",
-            "| :--- | :--- | :--- | :--- |"
-        ]
+        # 5. [TASK 5] Lógica do "Diff" (MODO DE DIAGNÓSTICO FINAL v4.0.1)
+        print("A iniciar o 'diagnóstico final'...")
 
         run_results_path = os.path.join(dbt_dir_abs, "target/run_results.json")
-        with open(run_results_path) as f:
-            run_results = json.load(f)
 
-        # O FILTRO (que o v2.2.3 provou que funciona)
-        models_built = [r for r in run_results['results'] if r.get('resource_type') == 'model' and r.get('status') == 'success']
+        try:
+            with open(run_results_path) as f:
+                # Não vamos fazer 'json.load()'. Vamos ler como texto puro.
+                raw_results_content = f.read()
+        except Exception as e:
+            raise Exception(f"Não consegui LER o ficheiro 'run_results.json'. Erro: {e}")
 
-        if not models_built:
-            message_lines.append("| *Nenhum modelo foi construído com sucesso.* | | | |")
-
-        for model in models_built:
-            model_name = model['unique_id'].split('.')[-1] 
-            print(f"A fazer o 'diff' do modelo: {model_name}...")
-
-            cursor.execute(f"SELECT COUNT(*) FROM {sf_database}.{prod_schema}.{model_name}")
-            count_prod = cursor.fetchone()[0]
-
-            cursor.execute(f"SELECT COUNT(*) FROM {sf_database}.{clone_schema}.{model_name}")
-            count_clone = cursor.fetchone()[0]
-
-            mudanca = count_clone - count_prod
-            emoji = "➡️" if mudanca == 0 else ( "⬆️" if mudanca > 0 else "⬇️" )
-
-            message_lines.append(f"| `{model_name}` | {count_prod:,} | {count_clone:,} | {mudanca:+,} {emoji} |")
+        message_lines = [
+            "✅ **[DIAGNÓSTICO FINAL]** (v4.0.1)",
+            "O `dbt build` rodou. Aqui está o conteúdo *cru* do `target/run_results.json`:",
+            "",
+            "```json",
+            raw_results_content[:3000], # Limita aos primeiros 3000 caracteres
+            "```",
+            "",
+            "Agora podemos *ver* o que está lá dentro e corrigir o filtro."
+        ]
 
         message = "\n".join(message_lines)
 
