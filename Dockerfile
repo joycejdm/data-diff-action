@@ -1,13 +1,10 @@
 # Dockerfile
-
-# Use uma imagem Python leve
 FROM python:3.10-slim
 
-# Instale a biblioteca 'requests' para fazer chamadas de API
-RUN pip install dbt-snowflake==1.8.2 # Vamos usar uma versão estável
+# Instala o 'requests' (para postar comentários)
+# E o 'dbt-snowflake' (que já traz o conector do Snowflake)
+RUN pip install requests dbt-snowflake
 
-# Copie o nosso script python (que vamos criar) para dentro do container
+# O resto fica igual
 COPY main.py /main.py
-
-# Diga ao container para rodar o nosso script python quando ele iniciar
 ENTRYPOINT ["python", "/main.py"]

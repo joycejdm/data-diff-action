@@ -2,13 +2,12 @@
 import os
 import requests
 import json
-import snowflake.connector # Importamos a nova biblioteca!
+import snowflake.connector # Importamos o conector!
 
-print("🤖 Action da Joyce iniciada! [TASK 2: Conectar ao Snowflake]")
-
-def post_comment(token, comments_url, body):
-    """Função para postar um comentário no PR"""
-    payload = {'body': body}
+# --- Função Helper para Postar Comentário ---
+# (É o mesmo código de antes, mas agora numa função)
+def post_comment(token, comments_url, message_body):
+    payload = {'body': message_body}
     headers = {
         'Authorization': f'token {token}',
         'Accept': 'application/vnd.github.v3+json'
@@ -19,78 +18,67 @@ def post_comment(token, comments_url, body):
     else:
         print(f"Erro ao postar comentário: {response.status_code}")
         print(response.text)
-        exit(1)
+        exit(1) # Falha a Action se não conseguir postar
 
-def test_snowflake_connection():
-    """Função para testar a conexão com o Snowflake"""
-    print("Iniciando teste de conexão com o Snowflake...")
+# --- Função Principal ---
+def run_connection_test():
+    print("🤖 Action da Joyce [TASK 2] iniciada!")
+
     try:
-        # 1. Ler as credenciais do Snowflake (passadas como inputs)
-        user = os.environ['INPUT_SNOWFLAKE_USER']
-        password = os.environ['INPUT_SNOWFLAKE_PASSWORD']
-        account = os.environ['INPUT_SNOWFLAKE_ACCOUNT']
-        region = os.environ['INPUT_SNOWFLAKE_REGION']
-        database = os.environ['INPUT_SNOWFLAKE_DATABASE']
-        schema = os.environ['INPUT_SNOWFLAKE_SCHEMA']
+        # 1. Pegar credenciais do GitHub
+        token = os.environ['INPUT_GITHUB_TOKEN']
+        event_path = os.environ['GITHUB_EVENT_PATH']
 
-        # O formato da conta para o conector é 'account.region'
-        # (Ex: 'wemgvex-rf16823.sa-east-1')
-        full_account = f"{account}.{region}"
+        with open(event_path) as f:
+            event_data = json.load(f)
 
-        # 2. Conectar!
+        if 'pull_request' not in event_data:
+            print("Não é um Pull Request. Saindo.")
+            exit(0)
+
+        comments_url = event_data['pull_request']['comments_url']
+
+        # 2. Pegar as NOVAS credenciais do Snowflake
+        # (Lembre-se: 'sf_account' vira 'INPUT_SF_ACCOUNT')
+        sf_user = os.environ['INPUT_SF_USER']
+        sf_password = os.environ['INPUT_SF_PASSWORD']
+        sf_account = os.environ['INPUT_SF_ACCOUNT']
+        sf_region = os.environ['INPUT_SF_REGION']
+        sf_warehouse = os.environ['INPUT_SF_WAREHOUSE']
+        sf_database = os.environ['INPUT_SF_DATABASE']
+        sf_role = os.environ['INPUT_SF_ROLE']
+
+        print("Tentando conectar ao Snowflake...")
+
+        # 3. Tentar a conexão
         conn = snowflake.connector.connect(
-            user=user,
-            password=password,
-            account=full_account,
-            database=database,
-            schema=schema
+            user=sf_user,
+            password=sf_password,
+            account=f"{sf_account}.{sf_region}", # Usamos o formato que descobrimos (ex: wemgvex-rf16823.sa-east-1)
+            warehouse=sf_warehouse,
+            database=sf_database,
+            role=sf_role
         )
 
-        # 3. Rodar o 'SELECT 1'
+        # 4. Se conectar, rodar um teste
         cursor = conn.cursor()
         cursor.execute("SELECT 1")
-        result = cursor.fetchone()
+        result = cursor.fetchone()[0]
 
-        if result[0] == 1:
-            print("✅ Conexão com o Snowflake BEM SUCEDIDA!")
-            return "✅ Conexão com o Snowflake BEM SUCEDIDA!"
+        if result == 1:
+            print("Conexão bem sucedida!")
+            message = "✅ **[TASK 2]** Conexão com o Snowflake BEM SUCEDIDA! (Rodei `SELECT 1`). Próxima task!"
         else:
-            raise Exception("Falha ao rodar SELECT 1")
+            raise Exception("Query 'SELECT 1' falhou.")
 
     except Exception as e:
-        print(f"❌ ERRO ao conectar no Snowflake: {e}")
-        # Retorna a mensagem de erro para ser postada no PR
-        return f"❌ ERRO ao conectar no Snowflake: {e}"
+        # 5. Se falhar, reportar o erro
+        print(f"ERRO: {e}")
+        message = f"❌ **[TASK 2]** FALHA ao conectar no Snowflake.\n\n**Erro:**\n```{e}```"
 
-# --- LÓGICA PRINCIPAL ---
-try:
-    # 1. Pegar dados do PR (igual a antes)
-    token = os.environ['INPUT_GITHUB_TOKEN']
-    event_path = os.environ['GITHUB_EVENT_PATH']
+    # 6. Postar o resultado no PR
+    post_comment(token, comments_url, message)
 
-    with open(event_path) as f:
-        event_data = json.load(f)
-
-    if 'pull_request' not in event_data:
-        print("Não é um Pull Request. Saindo.")
-        exit(0)
-
-    comments_url = event_data['pull_request']['comments_url']
-
-    # 2. Postar o comentário "Olá" (igual a antes)
-    post_comment(token, comments_url, "🤖 Olá! Estou a conectar no Snowflake agora...")
-
-    # 3. TESTAR O SNOWFLAKE (A parte nova!)
-    connection_message = test_snowflake_connection()
-
-    # 4. Postar o resultado da conexão
-    post_comment(token, comments_url, connection_message)
-
-except Exception as e:
-    print(f"Ocorreu um erro geral: {e}")
-    # Tenta postar o erro geral no PR se possível
-    try:
-        post_comment(os.environ['INPUT_GITHUB_TOKEN'], os.environ['GITHUB_EVENT_PATH'], f"❌ Ocorreu um erro geral na Action: {e}")
-    except:
-        pass # Se falhar, só falha
-    exit(1)
+# --- Rodar o script ---
+if __name__ == "__main__":
+    run_connection_test()

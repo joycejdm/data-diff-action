@@ -2,34 +2,39 @@
 name: 'Joyce Data Diff Action'
 description: 'Roda um diff estatístico em PRs do dbt.'
 
+# Inputs (como o usuário passa informações para nós)
 inputs:
-  github_token: # O que já tínhamos
+  github_token:
     description: 'Token do GitHub para postar comentários.'
     required: true
 
   # --- NOVOS INPUTS ---
-  snowflake_user:
-    description: 'Usuário do Snowflake.'
+  sf_account:
+    description: 'O localizador da conta Snowflake (ex: wemgvex-rf16823)'
     required: true
-  snowflake_password:
-    description: 'Senha do Snowflake.'
+  sf_region:
+    description: 'A região da conta Snowflake (ex: sa-east-1)'
     required: true
-  snowflake_account:
-    description: 'Conta do Snowflake (ex: wemgvex-rf16823).'
+  sf_user:
+    description: 'O usuário do Snowflake'
     required: true
-  snowflake_region:
-    description: 'Região da conta Snowflake (ex: sa-east-1).'
+  sf_password:
+    description: 'A senha do Snowflake'
     required: true
-  snowflake_warehouse:
-    description: 'Warehouse a ser usado.'
-    required: false # Opcional, podemos usar o padrão
-  snowflake_database:
-    description: 'Banco de dados a ser usado.'
+  sf_role:
+    description: 'O role a ser usado no Snowflake (ex: ACCOUNTADMIN)'
     required: true
-  snowflake_schema:
-    description: 'Schema a ser usado (o de "produção").'
+  sf_warehouse:
+    description: 'O warehouse a ser usado (ex: COMPUTE_WH)'
+    required: true
+  sf_database:
+    description: 'O banco de dados (ex: DEV_DB)'
+    required: true
+  sf_schema:
+    description: 'O schema de produção (ex: PROD_SCHEMA)'
     required: true
 
+# Runs (como a Action é executada)
 runs:
   using: 'docker'
   image: 'Dockerfile'
