@@ -1,18 +1,16 @@
-# main.py (VERSÃO v3.0.0 - A "Forma Correta")
+# main.py (VERSÃO v4.0.0 - A "FORMA CORRETA" FINAL)
 import os
 import requests
 import json
 import snowflake.connector
 import subprocess
 import sys
-# A NOSSA NOVA BIBLIOTECA (DA PESQUISA)
-from dbt_artifacts_parser.parser import parse_run_results
 
-# --- Função Helper para Postar Comentário (Igual) ---
+# --- Função Helper para Postar Comentário (Corrigida) ---
 def post_comment(message_body):
     print(f"A postar comentário...")
     try:
-        token = os.environ['INPUT_GITHUB_TOKEN']
+        token = os.environ['INPUT_GITHUB_TOKEN'] # Espera 'INPUT_GITHUB_TOKEN'
         event_path = os.environ['GITHUB_EVENT_PATH']
         with open(event_path) as f:
             event_data = json.load(f)
@@ -25,11 +23,9 @@ def post_comment(message_body):
     except Exception as e:
         print(f"Falha crítica ao tentar postar comentário: {e}")
 
-# --- Função Helper para Rodar Comandos (Igual) ---
-def run_command(command, cwd_dir):
+# --- Função Helper para Rodar Comandos (Corrigida) ---
+def run_command(command, cwd_dir, profiles_dir):
     print(f"Executando: {' '.join(command)} (no diretório: {cwd_dir})")
-    runner_home = os.environ.get('HOME', '/root')
-    profiles_dir = os.path.join(runner_home, ".dbt")
     command.extend(["--profiles-dir", profiles_dir])
     result = subprocess.run(command, capture_output=True, text=True, encoding='utf-8', cwd=cwd_dir)
     if result.returncode != 0:
@@ -38,19 +34,18 @@ def run_command(command, cwd_dir):
     print("--- Saída do Subprocess ---"); print(result.stdout)
     return result.stdout
 
-# --- Função Helper para Criar o profiles.yml (Igual) ---
-def create_profiles_yml(sf_account, sf_user, sf_password, sf_role, sf_warehouse, sf_database, clone_schema):
+# --- Função Helper para Criar o profiles.yml (Corrigida) ---
+def create_profiles_yml(profiles_dir, sf_account, sf_user, sf_password, sf_role, sf_warehouse, sf_database, clone_schema):
     print("A criar profiles.yml temporário...")
-    runner_home = os.environ.get('HOME', '/root')
-    dbt_profile_path = os.path.join(runner_home, ".dbt")
-    os.makedirs(dbt_profile_path, exist_ok=True)
+    os.makedirs(profiles_dir, exist_ok=True)
+    # ESTA É A LÓGICA DE CONEXÃO DA SUA PESQUISA (v2.0.0)
     profiles_yml_content = f"""
     default:
       target: dev
       outputs:
         dev:
           type: snowflake
-          account: {sf_account}
+          account: {sf_account} # A conta completa (ex: ...sa-east-1.aws)
           user: {sf_user}
           password: {sf_password}
           role: {sf_role}
@@ -59,13 +54,13 @@ def create_profiles_yml(sf_account, sf_user, sf_password, sf_role, sf_warehouse,
           schema: {clone_schema}
           threads: 1
     """
-    with open(os.path.join(dbt_profile_path, "profiles.yml"), "w") as f:
+    with open(os.path.join(profiles_dir, "profiles.yml"), "w") as f:
         f.write(profiles_yml_content)
     print("profiles.yml temporário criado com sucesso.")
 
-# --- Função Principal (COM A LÓGICA DE PARSING CORRETA) ---
+# --- Função Principal ---
 def main():
-    print(f"🤖 Action da Joyce [v3.0.0] iniciada!")
+    print(f"🤖 Action da Joyce [v4.0.0] iniciada!")
 
     conn = None
     cursor = None
@@ -73,13 +68,14 @@ def main():
     clone_schema = "PR_CLONE_ERROR"
 
     try:
-        # 1. Pegar credenciais e inputs (Igual)
+        # 1. Pegar credenciais e inputs
         token = os.environ['INPUT_GITHUB_TOKEN']
         event_path = os.environ['GITHUB_EVENT_PATH']
         with open(event_path) as f:
             event_data = json.load(f)
         comments_url = event_data['pull_request']['comments_url']
         pr_number = event_data['pull_request']['number']
+
         sf_user = os.environ['INPUT_SF_USER']; sf_password = os.environ['INPUT_SF_PASSWORD']
         sf_account = os.environ['INPUT_SF_ACCOUNT']; sf_warehouse = os.environ['INPUT_SF_WAREHOUSE']
         sf_database = os.environ['INPUT_SF_DATABASE']; sf_role = os.environ['INPUT_SF_ROLE']
@@ -88,7 +84,10 @@ def main():
         dbt_dir_abs = os.path.join("/github/workspace", dbt_dir_relative)
         clone_schema = f"PR_{pr_number}_CLONE"
 
-        # 2. Conexão (Igual)
+        runner_home = os.environ.get('HOME', '/root')
+        profiles_dir = os.path.join(runner_home, ".dbt_pr_runner") # Um path único para o profiles
+
+        # 2. Conexão (LÓGICA DA SUA PESQUISA v2.0.0)
         print(f"A conectar ao Snowflake (Conta: {sf_account})...")
         conn = snowflake.connector.connect(
             user=sf_user, password=sf_password, account=sf_account,
@@ -97,48 +96,45 @@ def main():
         cursor = conn.cursor()
         print("✅ Conexão com o Snowflake BEM SUCEDIDA!")
 
-        # 3. "Zero-Copy Clone" (Igual)
+        # 3. "Zero-Copy Clone"
         print(f"A criar schema 'clone': {clone_schema} a partir de {prod_schema}...")
         cursor.execute(f"CREATE OR REPLACE TRANSIENT SCHEMA {clone_schema} CLONE {prod_schema};")
         print(f"Schema {clone_schema} criado com sucesso.")
 
         # 4. Rodar dbt
-        create_profiles_yml(sf_account, sf_user, sf_password, sf_role, sf_warehouse, sf_database, clone_schema)
-        run_command(["dbt", "deps"], cwd_dir=dbt_dir_abs)
+        create_profiles_yml(profiles_dir, sf_account, sf_user, sf_password, sf_role, sf_warehouse, sf_database, clone_schema)
 
-        # Voltamos ao 'dbt build' (que sabemos que funciona, pelo v2.2.3)
+        # Usar 'dbt build' que sabemos que funciona (do v2.2.3)
         print("A executar 'dbt build'...")
-        run_command(["dbt", "build"], cwd_dir=dbt_dir_abs)
+        run_command(["dbt", "build"], cwd_dir=dbt_dir_abs, profiles_dir=profiles_dir)
         print("✅ 'dbt build' concluído!")
 
-        # 5. [TASK 5] Lógica do "Diff" (*** A FORMA CORRETA ***)
-        print("A iniciar o 'diff' (com dbt-artifacts-parser)...")
+        # 5. [TASK 5] Lógica do "Diff" (O PARSER MANUAL v2.3.1)
+        print("A iniciar o 'diff' (com parser manual)...")
         message_lines = [
-            "✅ **[TASK 5 & 6]** SUCESSO! (v3.0.0)",
+            "✅ **[TASK 5 & 6]** SUCESSO! (v4.0.0 - FINALMENTE)",
             "O `dbt build` rodou e aqui está o 'diff' de contagem de linhas:", "",
             "| Modelo Modificado | Contagem (Produção) | Contagem (PR) | Mudança |",
             "| :--- | :--- | :--- | :--- |"
         ]
 
-        # A FORMA CORRETA DE LER O FICHEIRO (baseado na pesquisa)
         run_results_path = os.path.join(dbt_dir_abs, "target/run_results.json")
-        run_results = parse_run_results(run_results_path) # Usa a biblioteca!
+        with open(run_results_path) as f:
+            run_results = json.load(f)
 
-        # A FORMA CORRETA DE FILTRAR
-        models_built = [r for r in run_results.results if r.resource_type == 'model' and r.status == 'success']
+        # O FILTRO (que o v2.2.3 provou que funciona)
+        models_built = [r for r in run_results['results'] if r.get('resource_type') == 'model' and r.get('status') == 'success']
 
         if not models_built:
             message_lines.append("| *Nenhum modelo foi construído com sucesso.* | | | |")
 
         for model in models_built:
-            model_name = model.unique_id.split('.')[-1] 
+            model_name = model['unique_id'].split('.')[-1] 
             print(f"A fazer o 'diff' do modelo: {model_name}...")
 
-            # Query "Antes" (Produção)
             cursor.execute(f"SELECT COUNT(*) FROM {sf_database}.{prod_schema}.{model_name}")
             count_prod = cursor.fetchone()[0]
 
-            # Query "Depois" (Clone)
             cursor.execute(f"SELECT COUNT(*) FROM {sf_database}.{clone_schema}.{model_name}")
             count_clone = cursor.fetchone()[0]
 
@@ -151,12 +147,12 @@ def main():
 
     except Exception as e:
         print(f"ERRO: {e}", file=sys.stderr)
-        message = f"❌ **[TASK 5,6]** FALHA (v3.0.0)\n\n**Erro Recebido:**\n```{e}```"
+        message = f"❌ **[TASK 5,6]** FALHA (v4.0.0)\n\n**Erro Recebido:**\n```{e}```"
         post_comment(message)
         sys.exit(1)
 
     finally:
-        # 7. Limpar (Igual)
+        # 7. Limpar
         try:
             if cursor:
                 print(f"A limpar... a dropar schema {clone_schema}...")

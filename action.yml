@@ -1,6 +1,5 @@
-name: 'Joyce Data Diff (v3.0.0)'
-description: '[TASK 5+6] Roda dbt build e faz o diff usando dbt-artifacts.'
-# ...
+name: 'Joyce Data Diff (v4.0.0 - A Correta)'
+description: '[TASK 5+6] Combina a conexão correta (v2) com o parser manual (v2.2.3)'
 
 inputs:
   github_token:
@@ -14,17 +13,13 @@ inputs:
   sf_role: { description: 'O role', required: true }
   sf_warehouse: { description: 'O warehouse', required: true }
   sf_database: { description: 'O banco de dados', required: true }
-
-  # NOVO INPUT (precisamos do schema de produção)
   sf_schema:
     description: 'O schema de produção (ex: PROD_SCHEMA)'
     required: true
-
-  # NOVO INPUT (para o dbt)
   dbt_project_dir:
     description: 'O diretório onde o projeto dbt está (ex: dbt_cobaia_project)'
     required: false
-    default: '.' # Assume que está na raiz
+    default: '.'
 
 runs:
   using: 'docker'
