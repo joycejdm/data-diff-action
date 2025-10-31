@@ -1,22 +1,15 @@
-name: 'Joyce Data Diff Action'
-description: 'Roda um diff estatístico em PRs do dbt.'
+name: 'Joyce Data Diff - Teste de Conexão'
+description: '[TASK 2] Testa a conexão com o Snowflake.'
 
 inputs:
-  github_token: { description: 'Token do GitHub para postar comentários.', required: true }
-  sf_account: { description: 'O localizador da conta Snowflake (ex: wemgvex-rf16823)', required: true }
-  sf_region: { description: 'A região da conta Snowflake (ex: sa-east-1)', required: true }
+  sf_account:
+    description: 'A conta Snowflake completa (ex: wemgvex-rf16823.sa-east-1.aws)'
+    required: true
   sf_user: { description: 'O usuário do Snowflake', required: true }
   sf_password: { description: 'A senha do Snowflake', required: true }
-  sf_role: { description: 'O role a ser usado no Snowflake (ex: ACCOUNTADMIN)', required: true }
-  sf_warehouse: { description: 'O warehouse a ser usado (ex: COMPUTE_WH)', required: true }
+  sf_role: { description: 'O role (ex: ACCOUNTADMIN)', required: true }
+  sf_warehouse: { description: 'O warehouse (ex: COMPUTE_WH)', required: true }
   sf_database: { description: 'O banco de dados (ex: DEV_DB)', required: true }
-  sf_schema: { description: 'O schema de produção (ex: PROD_SCHEMA)', required: true }
-
-  # Novo input para o dbt
-  dbt_project_dir:
-    description: 'O diretório onde o projeto dbt (dbt_project.yml) está localizado.'
-    required: false
-    default: '.' # Assume que está na raiz
 
 runs:
   using: 'docker'
