@@ -8,3 +8,5 @@ RUN pip install requests dbt-snowflake
 # O resto fica igual
 COPY main.py /main.py
 ENTRYPOINT ["python", "/main.py"]
+
+# FORÇA REBUILD v3
