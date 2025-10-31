@@ -1,40 +1,23 @@
-# action.yml
 name: 'Joyce Data Diff Action'
 description: 'Roda um diff estatístico em PRs do dbt.'
 
-# Inputs (como o usuário passa informações para nós)
 inputs:
-  github_token:
-    description: 'Token do GitHub para postar comentários.'
-    required: true
+  github_token: { description: 'Token do GitHub para postar comentários.', required: true }
+  sf_account: { description: 'O localizador da conta Snowflake (ex: wemgvex-rf16823)', required: true }
+  sf_region: { description: 'A região da conta Snowflake (ex: sa-east-1)', required: true }
+  sf_user: { description: 'O usuário do Snowflake', required: true }
+  sf_password: { description: 'A senha do Snowflake', required: true }
+  sf_role: { description: 'O role a ser usado no Snowflake (ex: ACCOUNTADMIN)', required: true }
+  sf_warehouse: { description: 'O warehouse a ser usado (ex: COMPUTE_WH)', required: true }
+  sf_database: { description: 'O banco de dados (ex: DEV_DB)', required: true }
+  sf_schema: { description: 'O schema de produção (ex: PROD_SCHEMA)', required: true }
 
-  # --- NOVOS INPUTS ---
-  sf_account:
-    description: 'O localizador da conta Snowflake (ex: wemgvex-rf16823)'
-    required: true
-  sf_region:
-    description: 'A região da conta Snowflake (ex: sa-east-1)'
-    required: true
-  sf_user:
-    description: 'O usuário do Snowflake'
-    required: true
-  sf_password:
-    description: 'A senha do Snowflake'
-    required: true
-  sf_role:
-    description: 'O role a ser usado no Snowflake (ex: ACCOUNTADMIN)'
-    required: true
-  sf_warehouse:
-    description: 'O warehouse a ser usado (ex: COMPUTE_WH)'
-    required: true
-  sf_database:
-    description: 'O banco de dados (ex: DEV_DB)'
-    required: true
-  sf_schema:
-    description: 'O schema de produção (ex: PROD_SCHEMA)'
-    required: true
+  # Novo input para o dbt
+  dbt_project_dir:
+    description: 'O diretório onde o projeto dbt (dbt_project.yml) está localizado.'
+    required: false
+    default: '.' # Assume que está na raiz
 
-# Runs (como a Action é executada)
 runs:
   using: 'docker'
   image: 'Dockerfile'
