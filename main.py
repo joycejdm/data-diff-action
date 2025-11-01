@@ -1,4 +1,4 @@
-# main.py (VERSÃO v0.5.0 - Motor data-diff)
+# main.py (VERSÃO v1.0.0 - O MVP ESTÁVEL)
 import os
 import requests
 import json
@@ -7,12 +7,13 @@ import subprocess
 import sys
 import zipfile
 import io
+from decimal import Decimal
 
-# --- Função Helper para Postar Comentário (Igual) ---
+# --- Função Helper para Postar Comentário (Corrigida) ---
 def post_comment(message_body):
     print(f"A postar comentário...")
     try:
-        token = os.environ['INPUT_GITHUB_TOKEN']
+        token = os.environ['INPUT_GITHUB_TOKEN'] # Espera 'INPUT_GITHUB_TOKEN'
         event_path = os.environ['GITHUB_EVENT_PATH']
         with open(event_path) as f: event_data = json.load(f)
         comments_url = event_data['pull_request']['comments_url']
@@ -24,7 +25,7 @@ def post_comment(message_body):
     except Exception as e:
         print(f"Falha crítica ao tentar postar comentário: {e}")
 
-# --- Função Helper para Rodar Comandos (Igual) ---
+# --- Função Helper para Rodar Comandos (Corrigida) ---
 def run_command(command, cwd_dir, profiles_dir):
     print(f"Executando: {' '.join(command)} (no diretório: {cwd_dir})")
     command.extend(["--profiles-dir", profiles_dir])
@@ -35,17 +36,18 @@ def run_command(command, cwd_dir, profiles_dir):
     print("--- Saída do Subprocess ---"); print(result.stdout)
     return result.stdout
 
-# --- Função Helper para Criar o profiles.yml (Igual) ---
+# --- Função Helper para Criar o profiles.yml (Corrigida) ---
 def create_profiles_yml(profiles_dir, sf_account, sf_user, sf_password, sf_role, sf_warehouse, sf_database, clone_schema):
     print("A criar profiles.yml temporário...")
     os.makedirs(profiles_dir, exist_ok=True)
+    # ESTA É A LÓGICA DE CONEXÃO DA SUA PESQUISA (v2.0.0)
     profiles_yml_content = f"""
     default:
       target: dev
       outputs:
         dev:
           type: snowflake
-          account: {sf_account}
+          account: {sf_account} # A conta completa (ex: ...sa-east-1.aws)
           user: {sf_user}
           password: {sf_password}
           role: {sf_role}
@@ -58,7 +60,7 @@ def create_profiles_yml(profiles_dir, sf_account, sf_user, sf_password, sf_role,
         f.write(profiles_yml_content)
     print("profiles.yml temporário criado com sucesso.")
 
-# --- Função Helper para Descarregar o Manifest (Igual) ---
+# --- Função Helper para Descarregar o Manifest (Corrigida) ---
 def download_prod_manifest(github_token):
     print("A iniciar o download do artefacto 'prod-manifest'...")
     repo_owner = os.environ['GITHUB_REPOSITORY_OWNER']; repo_name = os.environ['GITHUB_REPOSITORY'].split('/')[-1]
@@ -86,7 +88,15 @@ def download_prod_manifest(github_token):
     print(f"Artefacto 'prod-manifest' descarregado e deszipado para {prod_state_dir_target}")
     return prod_state_dir_parent
 
-# --- Função Helper (Schema Diff) (Igual) ---
+# --- Função Helper (Formatação) ---
+def format_value(value):
+    if value is None:
+        return "NULL"
+    if isinstance(value, Decimal) or isinstance(value, float):
+        return f"{value:,.2f}"
+    return f"{value:,}"
+
+# --- Função Helper (Schema Diff) ---
 def get_schema_info(cursor, database, schema):
     print(f"A ler schema: {database}.{schema}")
     sql_get_cols = f"""
@@ -103,14 +113,14 @@ def get_schema_info(cursor, database, schema):
         schema_info[table_name][col_name] = col_type
     return schema_info
 
-# --- Função Principal (MODIFICADA) ---
+# --- Função Principal ---
 def main():
-    print(f"🤖 Action da Joyce [v0.5.0 'data-diff Engine'] iniciada!")
+    print(f"🤖 Action da Joyce [v1.0.0 'MVP Estável'] iniciada!")
 
     conn = None; cursor = None; message = ""; clone_schema = "PR_CLONE_ERROR"
 
     try:
-        # 1. Pegar credenciais (Igual)
+        # 1. Pegar credenciais
         token = os.environ['INPUT_GITHUB_TOKEN']
         event_path = os.environ['GITHUB_EVENT_PATH']
         with open(event_path) as f: event_data = json.load(f)
@@ -125,7 +135,7 @@ def main():
         runner_home = os.environ.get('HOME', '/root')
         profiles_dir = os.path.join(runner_home, ".dbt_pr_runner")
 
-        # 2. Conexão (Igual)
+        # 2. Conexão
         conn = snowflake.connector.connect(
             user=sf_user, password=sf_password, account=sf_account,
             warehouse=sf_warehouse, database=sf_database, role=sf_role
@@ -133,14 +143,14 @@ def main():
         cursor = conn.cursor()
         print("✅ Conexão com o Snowflake BEM SUCEDIDA!")
 
-        # 3. "Zero-Copy Clone" (Igual)
+        # 3. "Zero-Copy Clone"
         cursor.execute(f"CREATE OR REPLACE TRANSIENT SCHEMA {clone_schema} CLONE {prod_schema};")
         print(f"Schema {clone_schema} criado com sucesso.")
 
-        # 4. Descarregar o manifest.json da Produção (Igual)
+        # 4. Descarregar o manifest.json da Produção
         prod_state_dir = download_prod_manifest(token)
 
-        # 5. Rodar dbt (Igual - Slim CI)
+        # 5. Rodar dbt (Slim CI)
         create_profiles_yml(profiles_dir, sf_account, sf_user, sf_password, sf_role, sf_warehouse, sf_database, clone_schema)
         run_command(["dbt", "deps"], cwd_dir=dbt_dir_abs, profiles_dir=profiles_dir)
         print("A executar 'dbt build' (Modo SLIM CI)...")
@@ -149,14 +159,13 @@ def main():
         run_command(slim_ci_command, cwd_dir=dbt_dir_abs, profiles_dir=profiles_dir)
         print("✅ 'dbt build' (Slim CI) concluído!")
 
-        # 6. [TASK 5] Lógica do "Diff" (*** O "UPGRADE FODA" ***)
+        # 6. Lógica do "Diff" (Schema + Stats)
         print("A iniciar o 'Relatório de Impacto'...")
 
-        # Cabeçalho da Mensagem
-        message_lines = [f"✅ **[MVP v2] SUCESSO! (v0.5.0 - Motor data-diff)**\n",
+        message_lines = [f"✅ **[MVP v1.0.0] SUCESSO! (Schema + Stats)**\n",
                          "O `dbt build` (Slim CI) rodou. Aqui está o seu Relatório de Impacto:\n"]
 
-        # --- LÓGICA DO SCHEMA DIFF (Mantida) ---
+        # --- LÓGICA DO SCHEMA DIFF ---
         schema_diff_report = ["---", "🛡️ **Relatório de Schema**\n"]
         prod_schema_info = get_schema_info(cursor, sf_database, prod_schema)
         clone_schema_info = get_schema_info(cursor, sf_database, clone_schema)
@@ -183,82 +192,72 @@ def main():
             schema_diff_report.insert(1, "| Modelo | Coluna | Mudança | Detalhes |"); schema_diff_report.insert(2, "| :--- | :--- | :--- | :--- |")
         message_lines.extend(schema_diff_report)
 
-        # --- LÓGICA DO DATA DIFF (*** NOVA ***) ---
-        stats_diff_report = ["\n---\n", "📊 **Relatório de Dados (Motor `data-diff`)**\n",
-                             "| Modelo | Status | Diferença |",
-                             "| :--- | :--- | :--- |"]
+        # --- LÓGICA DO STATS DIFF ---
+        stats_diff_report = ["\n---\n", "📊 **Relatório Estatístico (em modelos construídos)**\n",
+                             "| Modelo | Métrica | Produção | PR | Mudança |",
+                             "| :--- | :--- | :--- | :--- | :--- |"]
 
         run_results_path = os.path.join(dbt_dir_abs, "target/run_results.json")
         with open(run_results_path) as f: run_results = json.load(f)
+
         models_built = [r for r in run_results['results'] if r.get('unique_id', '').startswith('model.') and r.get('status') == 'success']
 
         if not models_built:
-            stats_diff_report.append("| *Nenhum modelo (modificado) foi construído.* | | |")
-
-        # Define as senhas como variáveis de ambiente para o `data-diff`
-        os.environ['DATA_DIFF_PASSWORD'] = sf_password
-        os.environ['DATA_DIFF_PASSWORD2'] = sf_password
+            stats_diff_report.append("| *Nenhum modelo (modificado) foi construído.* | | | | |")
 
         for model in models_built:
             model_name_upper = model['unique_id'].split('.')[-1].upper()
-            print(f"A rodar 'data-diff' no modelo: {model_name_upper}...")
+            print(f"A fazer o 'diff' estatístico do modelo: {model_name_upper}...")
 
-            # Define as tabelas de produção e clone
-            tabela_prod = f"{prod_schema}.{model_name_upper}"
-            tabela_clone = f"{clone_schema}.{model_name_upper}"
-
-            # Encontrar a Chave Primária (o 'data-diff' precisa disto)
-            # Vamos assumir que a primeira coluna é a chave (isto é uma simplificação de MVP)
-            # O ideal seria ler o 'schema.yml' do dbt, mas isso é v0.6.0!
-            primary_key = prod_schema_info[model_name_upper].keys()
-            if not primary_key:
-                raise Exception(f"Modelo {model_name_upper} não tem colunas no schema_info.")
-            primary_key = list(primary_key)[0] # Pega a primeira coluna
-            print(f"A usar a chave primária (suposta): {primary_key}")
-
-            # Constrói o comando 'data-diff' (sem senhas)
-            diff_command = [
-                "data-diff",
-                "--driver", "snowflake",
-                "--host", sf_account,
-                "--user", sf_user,
-                "--warehouse", sf_warehouse,
-                "--database", sf_database,
-                tabela_prod, # Tabela 1
-                tabela_clone, # Tabela 2
-                "--json",
-                "--key-columns", primary_key
+            prod_cols = prod_schema_info.get(model_name_upper, {})
+            clone_cols = clone_schema_info.get(model_name_upper, {})
+            numeric_types = ('NUMBER', 'FLOAT', 'DECIMAL', 'INT', 'INTEGER', 'DOUBLE')
+            common_numeric_cols = [
+                col for col, type in prod_cols.items() 
+                if col in clone_cols and type == clone_cols[col] and type in numeric_types
             ]
+            print(f"Colunas numéricas comuns encontradas: {common_numeric_cols}")
+            aggs = ["COUNT(*)"]
+            for col in common_numeric_cols:
+                aggs.append(f"SUM({col})"); aggs.append(f"AVG({col})")
+            sql_agg_string = ", ".join(aggs)
 
-            # Roda o comando 'data-diff' (sem a nossa helper 'run_command')
-            result = subprocess.run(diff_command, capture_output=True, text=True, encoding='utf-8')
+            cursor.execute(f"SELECT {sql_agg_string} FROM {sf_database}.{prod_schema}.{model_name_upper}")
+            prod_stats = cursor.fetchone()
+            cursor.execute(f"SELECT {sql_agg_string} FROM {sf_database}.{clone_schema}.{model_name_upper}")
+            clone_stats = cursor.fetchone()
 
-            if result.returncode == 0:
-                # Sucesso, mas o que ele disse?
-                diff_json = json.loads(result.stdout)
-                is_diff = diff_json['diff_percent'] > 0
-                if is_diff:
-                    diff_report = f"❌ **Diferente** ({diff_json['diff_percent']:.2f}%)"
-                else:
-                    diff_report = "✅ **Idêntico**"
-                stats_diff_report.append(f"| `{model_name_upper}` | `{diff_report}` | {diff_json['total']} linhas |")
-            else:
-                # O 'data-diff' falhou
-                print(f"--- ERRO no data-diff ---"); print(result.stdout); print(result.stderr)
-                stats_diff_report.append(f"| `{model_name_upper}` | ⚠️ **Erro** | `Falha ao rodar data-diff` |")
+            stat_index = 0
+            count_prod, count_clone = prod_stats[stat_index], clone_stats[stat_index]
+            mudanca = (count_clone or 0) - (count_prod or 0)
+            emoji = "➡️" if mudanca == 0 else ( "⬆️" if mudanca > 0 else "⬇️" )
+            stats_diff_report.append(f"| `{model_name_upper}` | `COUNT(*)` | {format_value(count_prod)} | {format_value(count_clone)} | {format_value(mudanca)} {emoji} |")
+            stat_index += 1
 
+            for col in common_numeric_cols:
+                sum_prod, sum_clone = prod_stats[stat_index], clone_stats[stat_index]
+                mudanca = (sum_clone or 0) - (sum_prod or 0)
+                emoji = "➡️" if mudanca == 0 else ( "⬆️" if mudanca > 0 else "⬇️" )
+                stats_diff_report.append(f"| | `SUM({col})` | {format_value(sum_prod)} | {format_value(sum_clone)} | {format_value(mudanca)} {emoji} |")
+                stat_index += 1
+
+                avg_prod, avg_clone = prod_stats[stat_index], clone_stats[stat_index]
+                mudanca = (avg_clone or 0) - (avg_prod or 0)
+                emoji = "➡️" if mudanca == 0 else ( "⬆️" if mudanca > 0 else "⬇️" )
+                stats_diff_report.append(f"| | `AVG({col})` | {format_value(avg_prod)} | {format_value(avg_clone)} | {format_value(mudanca)} {emoji} |")
+                stat_index += 1
 
         message_lines.extend(stats_diff_report)
         message = "\n".join(message_lines)
 
     except Exception as e:
         print(f"ERRO: {e}", file=sys.stderr)
-        message = f"❌ **[MVP v2]** FALHA (v0.5.0)\n\n**Erro Recebido:**\n```{e}```"
+        message = f"❌ **[MVP v1.0.0]** FALHA\n\n**Erro Recebido:**\n```{e}```"
         post_comment(message)
         sys.exit(1)
 
     finally:
-        # 7. Limpar (Igual)
+        # 7. Limpar
         try:
             if cursor:
                 print(f"A limpar... a dropar schema {clone_schema}...")
