@@ -1,11 +1,11 @@
-# Dockerfile (v0.2.0)
+# Dockerfile (v0.5.0)
 FROM python:3.10-slim
 
-# Instala git E unzip (para descompactar artefactos)
+# Instala git E unzip
 RUN apt-get update && apt-get install -y git-core unzip
 
-# Instala dbt-snowflake (que já inclui o conector e o requests)
-RUN pip install dbt-snowflake
+# Instala o dbt, o conector E o "Motor V1V" (data-diff)
+RUN pip install dbt-snowflake data-diff
 
 COPY main.py /main.py
 WORKDIR /github/workspace

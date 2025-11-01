@@ -1,4 +1,4 @@
-# main.py (VERSÃO v0.4.0 - SCHEMA + STATS DIFF)
+# main.py (VERSÃO v0.5.0 - Motor data-diff)
 import os
 import requests
 import json
@@ -7,7 +7,6 @@ import subprocess
 import sys
 import zipfile
 import io
-from decimal import Decimal
 
 # --- Função Helper para Postar Comentário (Igual) ---
 def post_comment(message_body):
@@ -87,20 +86,8 @@ def download_prod_manifest(github_token):
     print(f"Artefacto 'prod-manifest' descarregado e deszipado para {prod_state_dir_target}")
     return prod_state_dir_parent
 
-# --- NOVA Função Helper (Formatação) ---
-def format_value(value):
-    if value is None:
-        return "NULL"
-    if isinstance(value, Decimal) or isinstance(value, float):
-        return f"{value:,.2f}"
-    return f"{value:,}"
-
-# --- NOVA Função Helper (O "Cérebro" do Schema Diff) ---
+# --- Função Helper (Schema Diff) (Igual) ---
 def get_schema_info(cursor, database, schema):
-    """
-    Query INFORMATION_SCHEMA e retorna um dicionário
-    Ex: {'FCT_VENDAS': {'COLUNA_A': 'TYPE_A', 'COLUNA_B': 'TYPE_B'}}
-    """
     print(f"A ler schema: {database}.{schema}")
     sql_get_cols = f"""
     SELECT TABLE_NAME, COLUMN_NAME, DATA_TYPE 
@@ -118,7 +105,7 @@ def get_schema_info(cursor, database, schema):
 
 # --- Função Principal (MODIFICADA) ---
 def main():
-    print(f"🤖 Action da Joyce [v0.4.0 'Schema Diff'] iniciada!")
+    print(f"🤖 Action da Joyce [v0.5.0 'data-diff Engine'] iniciada!")
 
     conn = None; cursor = None; message = ""; clone_schema = "PR_CLONE_ERROR"
 
@@ -166,121 +153,107 @@ def main():
         print("A iniciar o 'Relatório de Impacto'...")
 
         # Cabeçalho da Mensagem
-        message_lines = [f"✅ **[MVP v2] SUCESSO! (v0.4.0 - Schema + Stats)**\n",
+        message_lines = [f"✅ **[MVP v2] SUCESSO! (v0.5.0 - Motor data-diff)**\n",
                          "O `dbt build` (Slim CI) rodou. Aqui está o seu Relatório de Impacto:\n"]
 
-        # --- NOVO: LÓGICA DO SCHEMA DIFF ---
+        # --- LÓGICA DO SCHEMA DIFF (Mantida) ---
         schema_diff_report = ["---", "🛡️ **Relatório de Schema**\n"]
         prod_schema_info = get_schema_info(cursor, sf_database, prod_schema)
         clone_schema_info = get_schema_info(cursor, sf_database, clone_schema)
-
         all_models = set(prod_schema_info.keys()) | set(clone_schema_info.keys())
         schema_changes_found = False
-
         for model_name in all_models:
             prod_cols = prod_schema_info.get(model_name, {})
             clone_cols = clone_schema_info.get(model_name, {})
-
-            # Colunas alteradas (tipo de dado)
             for col_name in prod_cols:
                 if col_name in clone_cols and prod_cols[col_name] != clone_cols[col_name]:
                     schema_changes_found = True
                     schema_diff_report.append(f"| `{model_name}` | `{col_name}` | ⚠️ **Tipo Alterado** | `{prod_cols[col_name]}` -> `{clone_cols[col_name]}` |")
-
-            # Colunas dropadas
             for col_name in prod_cols:
                 if col_name not in clone_cols:
                     schema_changes_found = True
                     schema_diff_report.append(f"| `{model_name}` | `{col_name}` | ❌ **DROPADA** | |")
-
-            # Colunas adicionadas
             for col_name in clone_cols:
                 if col_name not in prod_cols:
                     schema_changes_found = True
                     schema_diff_report.append(f"| `{model_name}` | `{col_name}` | ✅ **ADICIONADA** | |")
-
         if not schema_changes_found:
             schema_diff_report.append("*Nenhuma mudança de schema detetada.*")
         else:
-            # Adiciona o cabeçalho da tabela se houver mudanças
-            schema_diff_report.insert(1, "| Modelo | Coluna | Mudança | Detalhes |")
-            schema_diff_report.insert(2, "| :--- | :--- | :--- | :--- |")
-
+            schema_diff_report.insert(1, "| Modelo | Coluna | Mudança | Detalhes |"); schema_diff_report.insert(2, "| :--- | :--- | :--- | :--- |")
         message_lines.extend(schema_diff_report)
 
-        # --- LÓGICA DO STATS DIFF (ATUALIZADA) ---
-        stats_diff_report = ["\n---\n", "📊 **Relatório Estatístico (em modelos construídos)**\n",
-                             "| Modelo | Métrica | Produção | PR | Mudança |",
-                             "| :--- | :--- | :--- | :--- | :--- |"]
+        # --- LÓGICA DO DATA DIFF (*** NOVA ***) ---
+        stats_diff_report = ["\n---\n", "📊 **Relatório de Dados (Motor `data-diff`)**\n",
+                             "| Modelo | Status | Diferença |",
+                             "| :--- | :--- | :--- |"]
 
         run_results_path = os.path.join(dbt_dir_abs, "target/run_results.json")
         with open(run_results_path) as f: run_results = json.load(f)
-
         models_built = [r for r in run_results['results'] if r.get('unique_id', '').startswith('model.') and r.get('status') == 'success']
 
         if not models_built:
-            stats_diff_report.append("| *Nenhum modelo (modificado) foi construído.* | | | | |")
+            stats_diff_report.append("| *Nenhum modelo (modificado) foi construído.* | | |")
+
+        # Define as senhas como variáveis de ambiente para o `data-diff`
+        os.environ['DATA_DIFF_PASSWORD'] = sf_password
+        os.environ['DATA_DIFF_PASSWORD2'] = sf_password
 
         for model in models_built:
             model_name_upper = model['unique_id'].split('.')[-1].upper()
-            print(f"A fazer o 'diff' estatístico do modelo: {model_name_upper}...")
+            print(f"A rodar 'data-diff' no modelo: {model_name_upper}...")
 
-            # Apanha as colunas numéricas COMUNS (para não falhar se uma for dropada)
-            prod_cols = prod_schema_info.get(model_name_upper, {})
-            clone_cols = clone_schema_info.get(model_name_upper, {})
+            # Define as tabelas de produção e clone
+            tabela_prod = f"{sf_database}.{prod_schema}.{model_name_upper}"
+            tabela_clone = f"{sf_database}.{clone_schema}.{model_name_upper}"
 
-            numeric_types = ('NUMBER', 'FLOAT', 'DECIMAL', 'INT', 'INTEGER', 'DOUBLE')
-            common_numeric_cols = [
-                col for col, type in prod_cols.items() 
-                if col in clone_cols and type == clone_cols[col] and type in numeric_types
+            # Encontrar a Chave Primária (o 'data-diff' precisa disto)
+            # Vamos assumir que a primeira coluna é a chave (isto é uma simplificação de MVP)
+            # O ideal seria ler o 'schema.yml' do dbt, mas isso é v0.6.0!
+            primary_key = prod_schema_info[model_name_upper].keys()
+            if not primary_key:
+                raise Exception(f"Modelo {model_name_upper} não tem colunas no schema_info.")
+            primary_key = list(primary_key)[0] # Pega a primeira coluna
+            print(f"A usar a chave primária (suposta): {primary_key}")
+
+            # Constrói o comando 'data-diff' (sem senhas)
+            diff_command = [
+                "data-diff",
+                "--driver", "snowflake",
+                "--host", sf_account,
+                "--user", sf_user,
+                "--warehouse", sf_warehouse,
+                "--database", sf_database,
+                tabela_prod, # Tabela 1
+                tabela_clone, # Tabela 2
+                "--json",
+                "--key-columns", primary_key
             ]
-            print(f"Colunas numéricas comuns encontradas: {common_numeric_cols}")
 
-            # --- Construir a query de estatísticas ---
-            aggs = ["COUNT(*)"]
-            for col in common_numeric_cols:
-                aggs.append(f"SUM({col})"); aggs.append(f"AVG({col})")
+            # Roda o comando 'data-diff' (sem a nossa helper 'run_command')
+            result = subprocess.run(diff_command, capture_output=True, text=True, encoding='utf-8')
 
-            sql_agg_string = ", ".join(aggs)
+            if result.returncode == 0:
+                # Sucesso, mas o que ele disse?
+                diff_json = json.loads(result.stdout)
+                is_diff = diff_json['diff_percent'] > 0
+                if is_diff:
+                    diff_report = f"❌ **Diferente** ({diff_json['diff_percent']:.2f}%)"
+                else:
+                    diff_report = "✅ **Idêntico**"
+                stats_diff_report.append(f"| `{model_name_upper}` | `{diff_report}` | {diff_json['total']} linhas |")
+            else:
+                # O 'data-diff' falhou
+                print(f"--- ERRO no data-diff ---"); print(result.stdout); print(result.stderr)
+                stats_diff_report.append(f"| `{model_name_upper}` | ⚠️ **Erro** | `Falha ao rodar data-diff` |")
 
-            # --- Executar as queries de estatísticas ---
-            cursor.execute(f"SELECT {sql_agg_string} FROM {sf_database}.{prod_schema}.{model_name_upper}")
-            prod_stats = cursor.fetchone()
-            cursor.execute(f"SELECT {sql_agg_string} FROM {sf_database}.{clone_schema}.{model_name_upper}")
-            clone_stats = cursor.fetchone()
-
-            # --- Construir a tabela de resultados ---
-            stat_index = 0
-
-            # COUNT(*)
-            count_prod, count_clone = prod_stats[stat_index], clone_stats[stat_index]
-            mudanca = (count_clone or 0) - (count_prod or 0)
-            emoji = "➡️" if mudanca == 0 else ( "⬆️" if mudanca > 0 else "⬇️" )
-            stats_diff_report.append(f"| `{model_name_upper}` | `COUNT(*)` | {format_value(count_prod)} | {format_value(count_clone)} | {format_value(mudanca)} {emoji} |")
-            stat_index += 1
-
-            # Outras estatísticas (SUM, AVG)
-            for col in common_numeric_cols:
-                # SUM
-                sum_prod, sum_clone = prod_stats[stat_index], clone_stats[stat_index]
-                mudanca = (sum_clone or 0) - (sum_prod or 0)
-                emoji = "➡️" if mudanca == 0 else ( "⬆️" if mudanca > 0 else "⬇️" )
-                stats_diff_report.append(f"| | `SUM({col})` | {format_value(sum_prod)} | {format_value(sum_clone)} | {format_value(mudanca)} {emoji} |")
-                stat_index += 1
-
-                # AVG
-                avg_prod, avg_clone = prod_stats[stat_index], clone_stats[stat_index]
-                mudanca = (avg_clone or 0) - (avg_prod or 0)
-                emoji = "➡️" if mudanca == 0 else ( "⬆️" if mudanca > 0 else "⬇️" )
-                stats_diff_report.append(f"| | `AVG({col})` | {format_value(avg_prod)} | {format_value(avg_clone)} | {format_value(mudanca)} {emoji} |")
-                stat_index += 1
 
         message_lines.extend(stats_diff_report)
         message = "\n".join(message_lines)
 
     except Exception as e:
         print(f"ERRO: {e}", file=sys.stderr)
-        message = f"❌ **[MVP v2]** FALHA (v0.4.0)\n\n**Erro Recebido:**\n```{e}```"
+        message = f"❌ **[MVP v2]** FALHA (v0.5.0)\n\n**Erro Recebido:**\n```{e}```"
         post_comment(message)
         sys.exit(1)
 
