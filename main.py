@@ -204,8 +204,8 @@ def main():
             print(f"A rodar 'data-diff' no modelo: {model_name_upper}...")
 
             # Define as tabelas de produção e clone
-            tabela_prod = f"{sf_database}.{prod_schema}.{model_name_upper}"
-            tabela_clone = f"{sf_database}.{clone_schema}.{model_name_upper}"
+            tabela_prod = f"{prod_schema}.{model_name_upper}"
+            tabela_clone = f"{clone_schema}.{model_name_upper}"
 
             # Encontrar a Chave Primária (o 'data-diff' precisa disto)
             # Vamos assumir que a primeira coluna é a chave (isto é uma simplificação de MVP)
