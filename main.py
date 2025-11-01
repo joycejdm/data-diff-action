@@ -1,4 +1,4 @@
-# main.py (VERSÃO v0.3.0 - SLIM CI + STATS DIFF)
+# main.py (VERSÃO v0.4.0 - SCHEMA + STATS DIFF)
 import os
 import requests
 import json
@@ -7,7 +7,7 @@ import subprocess
 import sys
 import zipfile
 import io
-from decimal import Decimal # Para formatar números
+from decimal import Decimal
 
 # --- Função Helper para Postar Comentário (Igual) ---
 def post_comment(message_body):
@@ -15,8 +15,7 @@ def post_comment(message_body):
     try:
         token = os.environ['INPUT_GITHUB_TOKEN']
         event_path = os.environ['GITHUB_EVENT_PATH']
-        with open(event_path) as f:
-            event_data = json.load(f)
+        with open(event_path) as f: event_data = json.load(f)
         comments_url = event_data['pull_request']['comments_url']
         payload = {'body': message_body}
         headers = { 'Authorization': f'token {token}', 'Accept': 'application/vnd.github.v3+json' }
@@ -63,29 +62,23 @@ def create_profiles_yml(profiles_dir, sf_account, sf_user, sf_password, sf_role,
 # --- Função Helper para Descarregar o Manifest (Igual) ---
 def download_prod_manifest(github_token):
     print("A iniciar o download do artefacto 'prod-manifest'...")
-    repo_owner = os.environ['GITHUB_REPOSITORY_OWNER']
-    repo_name = os.environ['GITHUB_REPOSITORY'].split('/')[-1]
+    repo_owner = os.environ['GITHUB_REPOSITORY_OWNER']; repo_name = os.environ['GITHUB_REPOSITORY'].split('/')[-1]
     list_runs_url = f"https://api.github.com/repos/{repo_owner}/{repo_name}/actions/workflows/generate_manifest.yml/runs?branch=main&status=success&per_page=1"
     headers = {'Authorization': f'token {github_token}', 'Accept': 'application/vnd.github.v3+json'}
     response = requests.get(list_runs_url, headers=headers)
     if response.status_code != 200 or not response.json()['workflow_runs']:
         raise Exception("Não encontrei nenhum workflow 'generate_manifest.yml' bem sucedido na 'main'.")
     latest_run_id = response.json()['workflow_runs'][0]['id']
-    print(f"Encontrei o último run ID da 'main': {latest_run_id}")
-
     list_artifacts_url = f"https://api.github.com/repos/{repo_owner}/{repo_name}/actions/runs/{latest_run_id}/artifacts"
     response = requests.get(list_artifacts_url, headers=headers)
     artifacts = response.json()['artifacts']
     prod_manifest_artifact = next((a for a in artifacts if a['name'] == 'prod-manifest'), None)
     if not prod_manifest_artifact:
         raise Exception("Não encontrei o artefacto 'prod-manifest' no último run da 'main'.")
-
     download_url = prod_manifest_artifact['archive_download_url']
-    print("Encontrei o URL de download do 'prod-manifest'.")
     response = requests.get(download_url, headers=headers, stream=True)
     if response.status_code != 200:
         raise Exception(f"Falha ao descarregar o artefacto: {response.status_code}")
-
     prod_state_dir_parent = os.path.join(os.environ.get('HOME', '/root'), "prod_state")
     prod_state_dir_target = os.path.join(prod_state_dir_parent, "target")
     os.makedirs(prod_state_dir_target, exist_ok=True)
@@ -99,26 +92,41 @@ def format_value(value):
     if value is None:
         return "NULL"
     if isinstance(value, Decimal) or isinstance(value, float):
-        # Formata como R$ 1,234.56 (exemplo)
         return f"{value:,.2f}"
-    # Formata como 1,234
     return f"{value:,}"
+
+# --- NOVA Função Helper (O "Cérebro" do Schema Diff) ---
+def get_schema_info(cursor, database, schema):
+    """
+    Query INFORMATION_SCHEMA e retorna um dicionário
+    Ex: {'FCT_VENDAS': {'COLUNA_A': 'TYPE_A', 'COLUNA_B': 'TYPE_B'}}
+    """
+    print(f"A ler schema: {database}.{schema}")
+    sql_get_cols = f"""
+    SELECT TABLE_NAME, COLUMN_NAME, DATA_TYPE 
+    FROM {database}.INFORMATION_SCHEMA.COLUMNS 
+    WHERE TABLE_SCHEMA = '{schema.upper()}'
+    """
+    cursor.execute(sql_get_cols)
+    schema_info = {}
+    for row in cursor.fetchall():
+        table_name, col_name, col_type = row[0], row[1], row[2]
+        if table_name not in schema_info:
+            schema_info[table_name] = {}
+        schema_info[table_name][col_name] = col_type
+    return schema_info
 
 # --- Função Principal (MODIFICADA) ---
 def main():
-    print(f"🤖 Action da Joyce [v0.3.0 'Stats Diff'] iniciada!")
+    print(f"🤖 Action da Joyce [v0.4.0 'Schema Diff'] iniciada!")
 
-    conn = None
-    cursor = None
-    message = ""
-    clone_schema = "PR_CLONE_ERROR"
+    conn = None; cursor = None; message = ""; clone_schema = "PR_CLONE_ERROR"
 
     try:
         # 1. Pegar credenciais (Igual)
         token = os.environ['INPUT_GITHUB_TOKEN']
         event_path = os.environ['GITHUB_EVENT_PATH']
         with open(event_path) as f: event_data = json.load(f)
-        comments_url = event_data['pull_request']['comments_url']
         pr_number = event_data['pull_request']['number']
         sf_user = os.environ['INPUT_SF_USER']; sf_password = os.environ['INPUT_SF_PASSWORD']
         sf_account = os.environ['INPUT_SF_ACCOUNT']; sf_warehouse = os.environ['INPUT_SF_WAREHOUSE']
@@ -155,13 +163,55 @@ def main():
         print("✅ 'dbt build' (Slim CI) concluído!")
 
         # 6. [TASK 5] Lógica do "Diff" (*** O "UPGRADE FODA" ***)
-        print("A iniciar o 'Diff Estatístico'...")
-        message_lines = [
-            f"✅ **[MVP v2] SUCESSO! (v0.3.0 - Stats Diff)",
-            "O `dbt build` (Slim CI) rodou e aqui está o 'Diff Estatístico':", "",
-            "| Modelo | Métrica | Produção | PR | Mudança |",
-            "| :--- | :--- | :--- | :--- | :--- |"
-        ]
+        print("A iniciar o 'Relatório de Impacto'...")
+
+        # Cabeçalho da Mensagem
+        message_lines = [f"✅ **[MVP v2] SUCESSO! (v0.4.0 - Schema + Stats)**\n",
+                         "O `dbt build` (Slim CI) rodou. Aqui está o seu Relatório de Impacto:\n"]
+
+        # --- NOVO: LÓGICA DO SCHEMA DIFF ---
+        schema_diff_report = ["---", "🛡️ **Relatório de Schema**\n"]
+        prod_schema_info = get_schema_info(cursor, sf_database, prod_schema)
+        clone_schema_info = get_schema_info(cursor, sf_database, clone_schema)
+
+        all_models = set(prod_schema_info.keys()) | set(clone_schema_info.keys())
+        schema_changes_found = False
+
+        for model_name in all_models:
+            prod_cols = prod_schema_info.get(model_name, {})
+            clone_cols = clone_schema_info.get(model_name, {})
+
+            # Colunas alteradas (tipo de dado)
+            for col_name in prod_cols:
+                if col_name in clone_cols and prod_cols[col_name] != clone_cols[col_name]:
+                    schema_changes_found = True
+                    schema_diff_report.append(f"| `{model_name}` | `{col_name}` | ⚠️ **Tipo Alterado** | `{prod_cols[col_name]}` -> `{clone_cols[col_name]}` |")
+
+            # Colunas dropadas
+            for col_name in prod_cols:
+                if col_name not in clone_cols:
+                    schema_changes_found = True
+                    schema_diff_report.append(f"| `{model_name}` | `{col_name}` | ❌ **DROPADA** | |")
+
+            # Colunas adicionadas
+            for col_name in clone_cols:
+                if col_name not in prod_cols:
+                    schema_changes_found = True
+                    schema_diff_report.append(f"| `{model_name}` | `{col_name}` | ✅ **ADICIONADA** | |")
+
+        if not schema_changes_found:
+            schema_diff_report.append("*Nenhuma mudança de schema detetada.*")
+        else:
+            # Adiciona o cabeçalho da tabela se houver mudanças
+            schema_diff_report.insert(1, "| Modelo | Coluna | Mudança | Detalhes |")
+            schema_diff_report.insert(2, "| :--- | :--- | :--- | :--- |")
+
+        message_lines.extend(schema_diff_report)
+
+        # --- LÓGICA DO STATS DIFF (ATUALIZADA) ---
+        stats_diff_report = ["\n---\n", "📊 **Relatório Estatístico (em modelos construídos)**\n",
+                             "| Modelo | Métrica | Produção | PR | Mudança |",
+                             "| :--- | :--- | :--- | :--- | :--- |"]
 
         run_results_path = os.path.join(dbt_dir_abs, "target/run_results.json")
         with open(run_results_path) as f: run_results = json.load(f)
@@ -169,70 +219,68 @@ def main():
         models_built = [r for r in run_results['results'] if r.get('unique_id', '').startswith('model.') and r.get('status') == 'success']
 
         if not models_built:
-            message_lines.append("| *Nenhum modelo (modificado) foi construído.* | | | | |")
+            stats_diff_report.append("| *Nenhum modelo (modificado) foi construído.* | | | | |")
 
         for model in models_built:
-            model_name = model['unique_id'].split('.')[-1] 
-            print(f"A fazer o 'diff' do modelo: {model_name}...")
+            model_name_upper = model['unique_id'].split('.')[-1].upper()
+            print(f"A fazer o 'diff' estatístico do modelo: {model_name_upper}...")
 
-            # --- NOVO: Encontrar colunas numéricas ---
-            print(f"A procurar colunas numéricas em {model_name}...")
-            sql_get_cols = f"""
-            SELECT COLUMN_NAME 
-            FROM {sf_database}.INFORMATION_SCHEMA.COLUMNS 
-            WHERE TABLE_SCHEMA = '{prod_schema.upper()}' 
-              AND TABLE_NAME = '{model_name.upper()}' 
-              AND DATA_TYPE IN ('NUMBER', 'FLOAT', 'DECIMAL', 'INT', 'INTEGER', 'DOUBLE')
-            """
-            cursor.execute(sql_get_cols)
-            numeric_columns = [row[0] for row in cursor.fetchall()]
-            print(f"Colunas numéricas encontradas: {numeric_columns}")
+            # Apanha as colunas numéricas COMUNS (para não falhar se uma for dropada)
+            prod_cols = prod_schema_info.get(model_name_upper, {})
+            clone_cols = clone_schema_info.get(model_name_upper, {})
+
+            numeric_types = ('NUMBER', 'FLOAT', 'DECIMAL', 'INT', 'INTEGER', 'DOUBLE')
+            common_numeric_cols = [
+                col for col, type in prod_cols.items() 
+                if col in clone_cols and type == clone_cols[col] and type in numeric_types
+            ]
+            print(f"Colunas numéricas comuns encontradas: {common_numeric_cols}")
 
             # --- Construir a query de estatísticas ---
             aggs = ["COUNT(*)"]
-            for col in numeric_columns:
-                aggs.append(f"SUM({col})")
-                aggs.append(f"AVG({col})")
+            for col in common_numeric_cols:
+                aggs.append(f"SUM({col})"); aggs.append(f"AVG({col})")
 
             sql_agg_string = ", ".join(aggs)
 
             # --- Executar as queries de estatísticas ---
-            cursor.execute(f"SELECT {sql_agg_string} FROM {sf_database}.{prod_schema}.{model_name}")
+            cursor.execute(f"SELECT {sql_agg_string} FROM {sf_database}.{prod_schema}.{model_name_upper}")
             prod_stats = cursor.fetchone()
-            cursor.execute(f"SELECT {sql_agg_string} FROM {sf_database}.{clone_schema}.{model_name}")
+            cursor.execute(f"SELECT {sql_agg_string} FROM {sf_database}.{clone_schema}.{model_name_upper}")
             clone_stats = cursor.fetchone()
 
             # --- Construir a tabela de resultados ---
             stat_index = 0
 
-            # 1. Adicionar o COUNT(*)
+            # COUNT(*)
             count_prod, count_clone = prod_stats[stat_index], clone_stats[stat_index]
             mudanca = (count_clone or 0) - (count_prod or 0)
             emoji = "➡️" if mudanca == 0 else ( "⬆️" if mudanca > 0 else "⬇️" )
-            message_lines.append(f"| `{model_name}` | `COUNT(*)` | {format_value(count_prod)} | {format_value(count_clone)} | {format_value(mudanca)} {emoji} |")
+            stats_diff_report.append(f"| `{model_name_upper}` | `COUNT(*)` | {format_value(count_prod)} | {format_value(count_clone)} | {format_value(mudanca)} {emoji} |")
             stat_index += 1
 
-            # 2. Adicionar as outras estatísticas (SUM, AVG)
-            for col in numeric_columns:
+            # Outras estatísticas (SUM, AVG)
+            for col in common_numeric_cols:
                 # SUM
                 sum_prod, sum_clone = prod_stats[stat_index], clone_stats[stat_index]
                 mudanca = (sum_clone or 0) - (sum_prod or 0)
                 emoji = "➡️" if mudanca == 0 else ( "⬆️" if mudanca > 0 else "⬇️" )
-                message_lines.append(f"| | `SUM({col})` | {format_value(sum_prod)} | {format_value(sum_clone)} | {format_value(mudanca)} {emoji} |")
+                stats_diff_report.append(f"| | `SUM({col})` | {format_value(sum_prod)} | {format_value(sum_clone)} | {format_value(mudanca)} {emoji} |")
                 stat_index += 1
 
                 # AVG
                 avg_prod, avg_clone = prod_stats[stat_index], clone_stats[stat_index]
                 mudanca = (avg_clone or 0) - (avg_prod or 0)
                 emoji = "➡️" if mudanca == 0 else ( "⬆️" if mudanca > 0 else "⬇️" )
-                message_lines.append(f"| | `AVG({col})` | {format_value(avg_prod)} | {format_value(avg_clone)} | {format_value(mudanca)} {emoji} |")
+                stats_diff_report.append(f"| | `AVG({col})` | {format_value(avg_prod)} | {format_value(avg_clone)} | {format_value(mudanca)} {emoji} |")
                 stat_index += 1
 
+        message_lines.extend(stats_diff_report)
         message = "\n".join(message_lines)
 
     except Exception as e:
         print(f"ERRO: {e}", file=sys.stderr)
-        message = f"❌ **[MVP v2]** FALHA (v0.3.0)\n\n**Erro Recebido:**\n```{e}```"
+        message = f"❌ **[MVP v2]** FALHA (v0.4.0)\n\n**Erro Recebido:**\n```{e}```"
         post_comment(message)
         sys.exit(1)
 
